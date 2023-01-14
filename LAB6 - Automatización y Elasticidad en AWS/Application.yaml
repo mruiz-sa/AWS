@@ -1,0 +1,77 @@
+Parameters:
+
+  InstanceType:
+    Type: String
+    Default: t2.micro
+    AllowedValues:
+      - t2.micro
+      - t3.micro
+    Description: Enter t2.micro or t3.micro. Default is t2.micro.
+
+  LaunchTemplateVersionNumber:
+    Default: 1
+    Type: String
+
+  NetworkStackName:
+    Type: String
+    Default: Network-templ
+
+
+Resources:
+
+  #EC2
+
+  LaunchTemplate:
+    Type: AWS::EC2::LaunchTemplate
+    Properties:
+      LaunchTemplateName: WebServer
+      LaunchTemplateData:
+        NetworkInterfaces:
+          - DeviceIndex: 0
+            AssociatePublicIpAddress: true
+            Groups:
+              - !Ref InstanceSecurityGroup
+            DeleteOnTermination: true
+        ImageId: ami-09d3b3274b6c5d4aa
+        InstanceType: !Ref InstanceType
+        UserData:
+          Fn::Base64:
+            !Sub |
+              #!/bin/bash
+              sudo yum update -y
+              sudo amazon-linux-extras install nginx1 -y 
+              sudo systemctl enable nginx
+              sudo systemctl start nginx
+
+  #SecurityGroup
+
+  InstanceSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Open HTTP (port 80) and SSH (port 22)
+      VpcId:
+        Fn::ImportValue:
+          !Sub ${NetworkStackName}-VPCID
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+
+  # AutoScaling
+
+  AutoScalingGroup:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    Properties:
+      AutoScalingGroupName: My-AG
+      MinSize: 2
+      MaxSize: 4
+      DesiredCapacity: 2
+      LaunchTemplate:
+        LaunchTemplateId: !Ref LaunchTemplate
+        Version: !Ref LaunchTemplateVersionNumber
+      VPCZoneIdentifier:
+        - Fn::ImportValue:
+            !Sub ${NetworkStackName}-PublicSubnet1ID
+        - Fn::ImportValue:
+            !Sub ${NetworkStackName}-PublicSubnet2ID
